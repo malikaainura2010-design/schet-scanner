@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Сканер</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #1c1c1e;
+            color: #ffffff;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            height: 100vh;
+            overflow: hidden;
+        }
+        h2 { margin-bottom: 5px; font-size: 18px; text-align: center; }
+        p { color: #8e8e93; font-size: 13px; text-align: center; margin-top: 0; margin-bottom: 20px;}
+        
+        .camera-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            /* УБИРАЕМ ЗЕРКАЛЬНОСТЬ для задней камеры */
+            transform: none !important; 
+        }
+        .overlay-frame {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            height: 70px;
+            border: 3px dashed #00ff66;
+            border-radius: 8px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+            pointer-events: none;
+            z-index: 2;
+        }
+        
+        .ui-container {
+            position: relative;
+            z-index: 3;
+            width: 100%;
+            padding: 20px;
+            padding-bottom: calc(20px + env(safe-area-inset-bottom));
+            background: linear-gradient(to top, rgba(28,28,30,1), rgba(28,28,30,0));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .btn {
+            background-color: #007aff;
+            color: white;
+            border: none;
+            padding: 18px 32px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 14px;
+            width: 100%;
+            max-width: 400px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4);
+        }
+        .btn:active { background-color: #0056b3; transform: scale(0.98); }
+    </style>
+</head>
+<body>
+
+    <div class="camera-container">
+        <video id="webcam" autoplay playsinline></video>
+        <div class="overlay-frame"></div>
+    </div>
+
+    <div class="ui-container">
+        <h2>📷 Наведите на счетчик</h2>
+        <p>Поместите циферблат в зеленую рамочку</p>
+        <button class="btn" onclick="captureAndSend()">📸 Сделать снимок</button>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+
+        // ИСПРАВЛЕННЫЙ ЗАПРОС КАМЕРЫ:
+        // 'facingMode: "environment"' жестко требует ЗАДНЮЮ камеру!
+        navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                facingMode: "environment", // Задняя камера!
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            } 
+        })
+        .then(stream => {
+            video.srcObject = stream;
+        })
+        .catch(err => {
+            alert("Ошибка доступа к задней камере: " + err);
+            // План Б: если задняя недоступна, берем любую
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => { video.srcObject = stream; });
+        });
+
+        function captureAndSend() {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Рисуем кадр без всяких отражений
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+            tg.sendData(JSON.stringify({ image: imageData }));
+            tg.close();
+        }
+    </script>
+</body>
+</html>
