@@ -21,7 +21,7 @@
         .camera-container {
             position: relative;
             width: 100%;
-            height: 75vh;
+            height: 80vh;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -37,29 +37,13 @@
             box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
             pointer-events: none;
         }
-        .controls {
+        .info-panel {
             width: 100%;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 12px;
+            padding: 15px;
+            text-align: center;
             background-color: #121212;
-            border-top-left-radius: 20px;
-            border-top-right-radius: 20px;
         }
-        .instructions { font-size: 14px; color: #aaa; text-align: center; }
-        .btn-capture {
-            width: 100%;
-            padding: 16px;
-            background-color: #007aff;
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 18px;
-            font-weight: 600;
-            cursor: pointer;
-        }
+        .instructions { font-size: 14px; color: #aaa; margin-top: 4px; }
         canvas { display: none; }
     </style>
 </head>
@@ -70,10 +54,9 @@
         <div class="scan-frame"></div>
     </div>
 
-    <div class="controls">
+    <div class="info-panel">
         <h2>📸 Наведите на счетчик</h2>
         <p class="instructions">Поместите циферблат в зелёную рамочку</p>
-        <button class="btn-capture" id="captureBtn">📸 Сделать снимок</button>
     </div>
 
     <canvas id="canvas"></canvas>
@@ -83,10 +66,14 @@
         tg.ready();
         tg.expand();
 
+        // Показываем главную синюю кнопку Telegram внизу
+        tg.MainButton.setText("📸 Сделать снимок");
+        tg.MainButton.show();
+
         const video = document.getElementById('webcam');
         const canvas = document.getElementById('canvas');
-        const captureBtn = document.getElementById('captureBtn');
 
+        // Включаем заднюю камеру
         navigator.mediaDevices.getUserMedia({
             video: { facingMode: { exact: "environment" } },
             audio: false
@@ -98,23 +85,28 @@
         }).then((stream) => {
             video.srcObject = stream;
         }).catch((err) => {
-            alert("Ошибка камере: " + err.message);
+            alert("Ошибка доступа к камере: " + err.message);
         });
 
-        captureBtn.addEventListener('click', () => {
+        // Клик по главной кнопке Telegram
+        tg.MainButton.onClick(() => {
+            tg.MainButton.showProgress(); // Показываем анимацию загрузки
+
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+            const imageData = canvas.toDataURL('image/jpeg', 0.6);
 
-            tg.sendData(JSON.stringify({
-                action: "photo_captured",
-                image: imageData
-            }));
-
-            tg.close();
+            try {
+                tg.sendData(JSON.stringify({
+                    action: "photo_captured",
+                    image: imageData
+                }));
+            } catch (e) {
+                alert("Ошибка отправки: " + e.message);
+            }
         });
     </script>
 </body>
