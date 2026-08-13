@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Сканер счетчика</title>
-    <!-- Telegram WebApp JS -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- Tesseract.js для сканирования цифр прямо в браузере -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,11 +31,11 @@
         video { width: 100%; height: 100%; object-fit: cover; }
         .scan-frame {
             position: absolute;
-            width: 80%;
-            height: 120px;
+            width: 85%;
+            height: 100px;
             border: 3px dashed #34c759;
             border-radius: 12px;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
             pointer-events: none;
         }
         .info-panel {
@@ -59,12 +57,12 @@
 
     <div class="camera-container">
         <video id="webcam" autoplay playsinline></video>
-        <div class="scan-frame" id="scanFrame"></div>
+        <div class="scan-frame"></div>
     </div>
 
     <div class="info-panel">
-        <div class="status-text" id="statusText">Наведите на цифры счетчика</div>
-        <p class="instructions">Поместите ролик с цифрами в зелёную рамочку</p>
+        <div class="status-text" id="statusText">Наведите рамочку четко на цифры</div>
+        <p class="instructions">Держите телефон ровно, без сильных бликов</p>
     </div>
 
     <canvas id="canvas"></canvas>
@@ -81,7 +79,6 @@
         const canvas = document.getElementById('canvas');
         const statusText = document.getElementById('statusText');
 
-        // Включаем заднюю камеру
         navigator.mediaDevices.getUserMedia({
             video: { facingMode: { exact: "environment" } },
             audio: false
@@ -92,24 +89,36 @@
             });
         }).then((stream) => {
             video.srcObject = stream;
-        }).catch((err) => {
-            alert("Ошибка доступа к камере: " + err.message);
         });
 
-        // Функция сканирования выделенной зоны
+        // Функция предобработки картинки (увеличение контраста и переведение в Ч/Б)
+        function preprocessImage(ctx, width, height) {
+            const imgData = ctx.getImageData(0, 0, width, height);
+            const data = imgData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                // Перевод в оттенки серого
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                // Повышение контрастности (порог)
+                const threshold = avg > 110 ? 255 : 0;
+                data[i] = threshold;     // Red
+                data[i + 1] = threshold; // Green
+                data[i + 2] = threshold; // Blue
+            }
+            ctx.putImageData(imgData, 0, 0);
+        }
+
         async function scanNumbers() {
             tg.MainButton.showProgress();
-            statusText.innerText = "⏳ Идёт сканирование цифр...";
+            statusText.innerText = "⏳ Идёт обработка и сканирование...";
 
-            // Настраиваем canvas по размеру видео
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Вырезаем область, где находится зелёная рамочка (центр экрана)
-            const frameWidth = canvas.width * 0.8;
-            const frameHeight = 120 * (canvas.height / window.innerHeight);
+            // Кроп строго по рамке
+            const frameWidth = canvas.width * 0.85;
+            const frameHeight = 100 * (canvas.height / window.innerHeight);
             const startX = (canvas.width - frameWidth) / 2;
             const startY = (canvas.height - frameHeight) / 2;
 
@@ -117,42 +126,43 @@
             croppedCanvas.width = frameWidth;
             croppedCanvas.height = frameHeight;
             const croppedCtx = croppedCanvas.getContext('2d');
+
             croppedCtx.drawImage(
                 canvas, 
                 startX, startY, frameWidth, frameHeight, 
                 0, 0, frameWidth, frameHeight
             );
 
+            // Применяем фильтр контрастности
+            preprocessImage(croppedCtx, frameWidth, frameHeight);
+
             try {
-                // Запускаем Tesseract OCR для распознавания только цифр
                 const worker = await Tesseract.createWorker('eng');
                 await worker.setParameters({
-                    tessedit_char_whitelist: '0123456789.,'
+                    tessedit_char_whitelist: '0123456789',
+                    tessedit_pageseg_mode: '7' // Режим: одна строка текста
                 });
 
-                const ret = await worker.recognize(croppedCanvas.toDataURL('image/jpeg'));
+                const ret = await worker.recognize(croppedCanvas.toDataURL('image/png'));
                 await worker.terminate();
 
-                const rawText = ret.data.text.trim();
-                // Очищаем результат от лишних символов
-                const digitsOnly = rawText.replace(/[^0-9]/g, '');
+                const digitsOnly = ret.data.text.replace(/[^0-9]/g, '').trim();
 
                 if (digitsOnly.length > 0) {
                     statusText.innerText = "✅ Распознано: " + digitsOnly;
                     
-                    // Отправляем в бота ТОЛЬКО ТЕКСТ с цифрами
                     tg.sendData(JSON.stringify({
                         action: "scan_complete",
                         readings: digitsOnly
                     }));
                 } else {
                     tg.MainButton.hideProgress();
-                    statusText.innerText = "⚠️ Цифры не найдены. Попробуйте еще раз!";
+                    statusText.innerText = "⚠️ Не удалось распознать. Поднесите ближе!";
                 }
 
             } catch (e) {
                 tg.MainButton.hideProgress();
-                statusText.innerText = "Ошибка распознавания: " + e.message;
+                statusText.innerText = "Ошибка: " + e.message;
             }
         }
 
