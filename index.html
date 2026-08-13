@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Сканер счетчика</title>
+    <!-- Telegram WebApp JS -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Tesseract.js для сканирования цифр прямо в браузере -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -43,7 +46,12 @@
             text-align: center;
             background-color: #121212;
         }
-        .instructions { font-size: 14px; color: #aaa; margin-top: 4px; }
+        .status-text {
+            font-size: 16px;
+            font-weight: 600;
+            color: #34c759;
+        }
+        .instructions { font-size: 13px; color: #aaa; margin-top: 4px; }
         canvas { display: none; }
     </style>
 </head>
@@ -51,12 +59,12 @@
 
     <div class="camera-container">
         <video id="webcam" autoplay playsinline></video>
-        <div class="scan-frame"></div>
+        <div class="scan-frame" id="scanFrame"></div>
     </div>
 
     <div class="info-panel">
-        <h2>📸 Наведите на счетчик</h2>
-        <p class="instructions">Поместите циферблат в зелёную рамочку</p>
+        <div class="status-text" id="statusText">Наведите на цифры счетчика</div>
+        <p class="instructions">Поместите ролик с цифрами в зелёную рамочку</p>
     </div>
 
     <canvas id="canvas"></canvas>
@@ -66,12 +74,12 @@
         tg.ready();
         tg.expand();
 
-        // Показываем главную синюю кнопку Telegram внизу
-        tg.MainButton.setText("📸 Сделать снимок");
+        tg.MainButton.setText("🔍 Сканировать");
         tg.MainButton.show();
 
         const video = document.getElementById('webcam');
         const canvas = document.getElementById('canvas');
+        const statusText = document.getElementById('statusText');
 
         // Включаем заднюю камеру
         navigator.mediaDevices.getUserMedia({
@@ -88,25 +96,68 @@
             alert("Ошибка доступа к камере: " + err.message);
         });
 
-        // Клик по главной кнопке Telegram
-        tg.MainButton.onClick(() => {
-            tg.MainButton.showProgress(); // Показываем анимацию загрузки
+        // Функция сканирования выделенной зоны
+        async function scanNumbers() {
+            tg.MainButton.showProgress();
+            statusText.innerText = "⏳ Идёт сканирование цифр...";
 
+            // Настраиваем canvas по размеру видео
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            const imageData = canvas.toDataURL('image/jpeg', 0.6);
+            // Вырезаем область, где находится зелёная рамочка (центр экрана)
+            const frameWidth = canvas.width * 0.8;
+            const frameHeight = 120 * (canvas.height / window.innerHeight);
+            const startX = (canvas.width - frameWidth) / 2;
+            const startY = (canvas.height - frameHeight) / 2;
+
+            const croppedCanvas = document.createElement('canvas');
+            croppedCanvas.width = frameWidth;
+            croppedCanvas.height = frameHeight;
+            const croppedCtx = croppedCanvas.getContext('2d');
+            croppedCtx.drawImage(
+                canvas, 
+                startX, startY, frameWidth, frameHeight, 
+                0, 0, frameWidth, frameHeight
+            );
 
             try {
-                tg.sendData(JSON.stringify({
-                    action: "photo_captured",
-                    image: imageData
-                }));
+                // Запускаем Tesseract OCR для распознавания только цифр
+                const worker = await Tesseract.createWorker('eng');
+                await worker.setParameters({
+                    tessedit_char_whitelist: '0123456789.,'
+                });
+
+                const ret = await worker.recognize(croppedCanvas.toDataURL('image/jpeg'));
+                await worker.terminate();
+
+                const rawText = ret.data.text.trim();
+                // Очищаем результат от лишних символов
+                const digitsOnly = rawText.replace(/[^0-9]/g, '');
+
+                if (digitsOnly.length > 0) {
+                    statusText.innerText = "✅ Распознано: " + digitsOnly;
+                    
+                    // Отправляем в бота ТОЛЬКО ТЕКСТ с цифрами
+                    tg.sendData(JSON.stringify({
+                        action: "scan_complete",
+                        readings: digitsOnly
+                    }));
+                } else {
+                    tg.MainButton.hideProgress();
+                    statusText.innerText = "⚠️ Цифры не найдены. Попробуйте еще раз!";
+                }
+
             } catch (e) {
-                alert("Ошибка отправки: " + e.message);
+                tg.MainButton.hideProgress();
+                statusText.innerText = "Ошибка распознавания: " + e.message;
             }
+        }
+
+        tg.MainButton.onClick(() => {
+            scanNumbers();
         });
     </script>
 </body>
