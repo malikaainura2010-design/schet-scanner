@@ -31,14 +31,13 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            -webkit-user-select: none;
-            pointer-events: none; /* Убирает значок паузы в iOS */
+            pointer-events: none;
         }
         
         .scan-frame {
             position: absolute;
             width: 80%;
-            height: 100px;
+            height: 120px;
             border: 3px dashed #34c759;
             border-radius: 12px;
             box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
@@ -85,7 +84,7 @@
     </div>
 
     <div class="info-panel">
-        <div class="status-text" id="statusText">Поместите счётчик в рамку</div>
+        <div class="status-text" id="statusText">Поместите цифры в рамку</div>
     </div>
 
     <canvas id="canvas"></canvas>
@@ -94,8 +93,6 @@
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
-
-        const userId = tg.initDataUnsafe?.user?.id || "";
 
         tg.MainButton.setText("🔍 Сканировать");
         tg.MainButton.show();
@@ -117,30 +114,27 @@
             video.srcObject = stream;
         });
 
-        tg.MainButton.onClick(async () => {
+        tg.MainButton.onClick(() => {
             laser.style.display = "block";
-            statusText.innerText = "⚡ Сканирование и обработка...";
+            statusText.innerText = "⚡ Сканирование...";
             tg.MainButton.showProgress();
 
-            const targetWidth = 600;
-            const scale = targetWidth / video.videoWidth;
-            canvas.width = targetWidth;
-            canvas.height = video.videoHeight * scale;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
             
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            const imageData = canvas.toDataURL('image/jpeg', 0.6);
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
 
-            // Отправляем прямо в бота через tg.sendData, но с корректной запаковкой
-            tg.sendData(JSON.stringify({
-                user_id: userId,
-                image: imageData
-            }));
-            
-            setTimeout(() => {
-                tg.close();
-            }, 300);
+            try {
+                tg.sendData(JSON.stringify({
+                    action: "scan_photo",
+                    image: imageData
+                }));
+            } catch (e) {
+                alert("Ошибка отправки: " + e.message);
+            }
         });
     </script>
 </body>
