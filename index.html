@@ -33,7 +33,6 @@
             object-fit: cover;
             pointer-events: none;
         }
-        
         .scan-frame {
             position: absolute;
             width: 80%;
@@ -44,7 +43,6 @@
             pointer-events: none;
             overflow: hidden;
         }
-
         .laser-line {
             display: none;
             position: absolute;
@@ -54,12 +52,10 @@
             box-shadow: 0 0 12px 3px #34c759;
             animation: scanAnimation 1s infinite ease-in-out alternate;
         }
-
         @keyframes scanAnimation {
             0% { top: 0%; }
             100% { top: 95%; }
         }
-
         .info-panel {
             width: 100%;
             padding: 15px;
@@ -90,9 +86,14 @@
     <canvas id="canvas"></canvas>
 
     <script>
+        // ⚠️ СУДА ВСТАВЬ СВОЮ ССЫЛКУ ИЗ LOCALTUNNEL (не забудь /upload на конце!)
+        const SERVER_URL = "https://https://yummy-kiwis-camp.loca.lt/upload"; 
+
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
+
+        const userId = tg.initDataUnsafe?.user?.id || "";
 
         tg.MainButton.setText("🔍 Сканировать");
         tg.MainButton.show();
@@ -114,9 +115,9 @@
             video.srcObject = stream;
         });
 
-        tg.MainButton.onClick(() => {
+        tg.MainButton.onClick(async () => {
             laser.style.display = "block";
-            statusText.innerText = "⚡ Сканирование...";
+            statusText.innerText = "⚡ Отправка кадра на сервер...";
             tg.MainButton.showProgress();
 
             canvas.width = video.videoWidth;
@@ -125,15 +126,27 @@
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+            const imageData = canvas.toDataURL('image/jpeg', 0.7);
 
             try {
-                tg.sendData(JSON.stringify({
-                    action: "scan_photo",
-                    image: imageData
-                }));
+                const response = await fetch(SERVER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        image: imageData
+                    })
+                });
+
+                if (response.ok) {
+                    tg.close();
+                } else {
+                    alert("Ошибка сервера при отправке");
+                    tg.MainButton.hideProgress();
+                }
             } catch (e) {
-                alert("Ошибка отправки: " + e.message);
+                alert("Ошибка сети: " + e.message);
+                tg.MainButton.hideProgress();
             }
         });
     </script>
