@@ -28,15 +28,35 @@
             overflow: hidden;
         }
         video { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* Зеленая рамка с лазерной линией */
         .scan-frame {
             position: absolute;
             width: 85%;
             height: 120px;
             border: 3px dashed #34c759;
             border-radius: 12px;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
             pointer-events: none;
+            overflow: hidden;
         }
+
+        /* Лазерная линия, бегающая вверх-вниз */
+        .laser-line {
+            display: none;
+            position: absolute;
+            width: 100%;
+            height: 3px;
+            background: #34c759;
+            box-shadow: 0 0 12px 3px #34c759;
+            animation: scanAnimation 1.5s infinite ease-in-out alternate;
+        }
+
+        @keyframes scanAnimation {
+            0% { top: 0%; }
+            100% { top: 95%; }
+        }
+
         .info-panel {
             width: 100%;
             padding: 15px;
@@ -56,12 +76,14 @@
 
     <div class="camera-container">
         <video id="webcam" autoplay playsinline></video>
-        <div class="scan-frame"></div>
+        <div class="scan-frame">
+            <div class="laser-line" id="laser"></div>
+        </div>
     </div>
 
     <div class="info-panel">
         <div class="status-text" id="statusText">Поместите счётчик в рамку</div>
-        <p class="instructions">Можно захватывать и чёрные, и красные цифры</p>
+        <p class="instructions">Нажмите "Сканировать" для считывания цифр</p>
     </div>
 
     <canvas id="canvas"></canvas>
@@ -77,6 +99,7 @@
         const video = document.getElementById('webcam');
         const canvas = document.getElementById('canvas');
         const statusText = document.getElementById('statusText');
+        const laser = document.getElementById('laser');
 
         navigator.mediaDevices.getUserMedia({
             video: { facingMode: { exact: "environment" } },
@@ -91,15 +114,17 @@
         });
 
         tg.MainButton.onClick(() => {
+            // Включаем лазерную линию
+            laser.style.display = "block";
+            statusText.innerText = "⚡ Сканирование и обработка...";
             tg.MainButton.showProgress();
-            statusText.innerText = "⏳ Передача кадра серверу...";
 
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Берём кадр с рамки
+            // Обрезка по рамке
             const frameWidth = canvas.width * 0.85;
             const frameHeight = 120 * (canvas.height / window.innerHeight);
             const startX = (canvas.width - frameWidth) / 2;
@@ -116,12 +141,15 @@
                 0, 0, frameWidth, frameHeight
             );
 
-            const imageData = croppedCanvas.toDataURL('image/jpeg', 0.8);
+            const imageData = croppedCanvas.toDataURL('image/jpeg', 0.85);
 
-            tg.sendData(JSON.stringify({
-                action: "scan_photo",
-                image: imageData
-            }));
+            // Отправляем кадр и мгновенно закрываем WebApp
+            setTimeout(() => {
+                tg.sendData(JSON.stringify({
+                    action: "scan_photo",
+                    image: imageData
+                }));
+            }, 300);
         });
     </script>
 </body>
