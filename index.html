@@ -36,7 +36,7 @@
         .scan-frame {
             position: absolute;
             width: 80%;
-            height: 120px;
+            height: 100px;
             border: 3px dashed #34c759;
             border-radius: 12px;
             box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
@@ -72,22 +72,22 @@
 </head>
 <body>
 
-    <div class="camera-container">
+    <div class="camera-container" id="container">
         <video id="webcam" autoplay playsinline muted webkit-playsinline></video>
-        <div class="scan-frame">
+        <div class="scan-frame" id="frame">
             <div class="laser-line" id="laser"></div>
         </div>
     </div>
 
     <div class="info-panel">
-        <div class="status-text" id="statusText">Поместите цифры в рамку</div>
+        <div class="status-text" id="statusText">Поместите черные цифры в зеленый прямоугольник</div>
     </div>
 
     <canvas id="canvas"></canvas>
 
     <script>
-        // Укажи актуальную ссылку из localtunnel / ngrok
-        const SERVER_URL = "https://wise-zoos-wonder.loca.lt/upload"; 
+        // Не забудь подставить актуальную ссылку localtunnel с /upload !
+        const SERVER_URL = "https://tidy-pants-do.loca.lt/upload"; 
 
         const tg = window.Telegram.WebApp;
         tg.ready();
@@ -102,8 +102,9 @@
         const canvas = document.getElementById('canvas');
         const statusText = document.getElementById('statusText');
         const laser = document.getElementById('laser');
+        const container = document.getElementById('container');
+        const frame = document.getElementById('frame');
 
-        // Запуск камеры
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -127,23 +128,36 @@
 
         tg.MainButton.onClick(async () => {
             laser.style.display = "block";
-            statusText.innerText = "⚡ Отправка кадра на сервер...";
+            statusText.innerText = "⚡ Распознаем цифры...";
             tg.MainButton.showProgress();
 
-            canvas.width = video.videoWidth || 640;
-            canvas.height = video.videoHeight || 480;
-            
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const cRect = container.getBoundingClientRect();
+            const fRect = frame.getBoundingClientRect();
 
-            const imageData = canvas.toDataURL('image/jpeg', 0.7);
+            // Вычисляем процентное положение рамки относительно видео
+            const scaleX = video.videoWidth / cRect.width;
+            const scaleY = video.videoHeight / cRect.height;
+
+            const cropX = (fRect.left - cRect.left) * scaleX;
+            const cropY = (fRect.top - cRect.top) * scaleY;
+            const cropW = fRect.width * scaleX;
+            const cropH = fRect.height * scaleY;
+
+            canvas.width = cropW;
+            canvas.height = cropH;
+
+            const ctx = canvas.getContext('2d');
+            // Вырезаем ТОЛЬКО область рамки
+            ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+            const imageData = canvas.toDataURL('image/jpeg', 0.9);
 
             try {
                 const response = await fetch(SERVER_URL, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'Bypass-Tunnel-Remainder': 'true' // Обход заглушки Localtunnel
+                        'Bypass-Tunnel-Remainder': 'true'
                     },
                     body: JSON.stringify({
                         user_id: userId,
@@ -158,7 +172,7 @@
                     tg.MainButton.hideProgress();
                 }
             } catch (e) {
-                alert("Ошибка сети (проверьте ссылку туннеля): " + e.message);
+                alert("Ошибка сети: " + e.message);
                 tg.MainButton.hideProgress();
             }
         });
