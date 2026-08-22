@@ -86,7 +86,7 @@
     <canvas id="canvas"></canvas>
 
     <script>
-        // ⚠️ СУДА ВСТАВЬ СВОЮ ССЫЛКУ ИЗ LOCALTUNNEL (не забудь /upload на конце!)
+        // Укажи актуальную ссылку из localtunnel / ngrok
         const SERVER_URL = "https://tidy-pants-do.loca.lt/upload"; 
 
         const tg = window.Telegram.WebApp;
@@ -103,25 +103,35 @@
         const statusText = document.getElementById('statusText');
         const laser = document.getElementById('laser');
 
-        navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { exact: "environment" } },
-            audio: false
-        }).catch(() => {
-            return navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment" },
-                audio: false
-            });
-        }).then((stream) => {
-            video.srcObject = stream;
-        });
+        // Запуск камеры
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" },
+                    audio: false
+                });
+                video.srcObject = stream;
+                await video.play();
+            } catch (err) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    video.srcObject = stream;
+                    await video.play();
+                } catch (e) {
+                    statusText.innerText = "Ошибка доступа к камере";
+                }
+            }
+        }
+
+        startCamera();
 
         tg.MainButton.onClick(async () => {
             laser.style.display = "block";
             statusText.innerText = "⚡ Отправка кадра на сервер...";
             tg.MainButton.showProgress();
 
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
             
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -131,7 +141,10 @@
             try {
                 const response = await fetch(SERVER_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Bypass-Tunnel-Remainder': 'true' // Обход заглушки Localtunnel
+                    },
                     body: JSON.stringify({
                         user_id: userId,
                         image: imageData
@@ -141,11 +154,11 @@
                 if (response.ok) {
                     tg.close();
                 } else {
-                    alert("Ошибка сервера при отправке");
+                    alert("Ошибка сервера при отправке: " + response.status);
                     tg.MainButton.hideProgress();
                 }
             } catch (e) {
-                alert("Ошибка сети: " + e.message);
+                alert("Ошибка сети (проверьте ссылку туннеля): " + e.message);
                 tg.MainButton.hideProgress();
             }
         });
